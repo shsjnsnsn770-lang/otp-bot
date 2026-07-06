@@ -1,9 +1,10 @@
 import requests
 import time
+import re
 import threading
 from flask import Flask
 
-# ==================== ডামি ফ্ল্যাস্ক সার্ভার (Render এর জন্য) ====================
+# ==================== Render এর জন্য ডামি ওয়েব সার্ভার ====================
 app = Flask('')
 
 @app.route('/')
@@ -27,6 +28,32 @@ API_PASSWORD = "md7247600@gmail.com"
 API_URL = "https://iprns.stats.direct/rest/sms"
 latest_stamp = None  
 
+def get_country_style(phone):
+    if phone.startswith("236"):
+        return "🇨🇫 #CF"
+    elif phone.startswith("961"):
+        return "🇱🇧 #LB"
+    return "🌐 #INT"
+
+def get_source_emoji(source):
+    src_upper = source.upper()
+    if "FACEBOOK" in src_upper or "FB" in src_upper:
+        return "🔷"
+    elif "1XBET" in src_upper:
+        return "🟥"
+    return "✉️"
+
+def mask_phone_premium(phone):
+    if len(phone) >= 8:
+        return f"{phone[:5]} 💠 {phone[-4:]}"
+    return phone
+
+def extract_otp(message):
+    match = re.search(r'\b\d{4,8}\b', message)
+    if match:
+        return match.group(0)
+    return ""
+
 def send_telegram_message(text):
     telegram_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
@@ -47,38 +74,36 @@ def fetch_new_sms():
             if not sms_list:
                 return
 
-            # প্রথমবার রান হলে লেটেস্ট টাইমস্ট্যাম্প সেট করা
             if latest_stamp is None:
                 latest_stamp = sms_list[0].get('start_stamp')
-                print(f"বট চালু হয়েছে। বর্তমান সর্বশেষ SMS সময়: {latest_stamp}")
+                print(f"বট চালু হয়েছে। সর্বশেষ SMS সময়: {latest_stamp}")
                 return
 
-            # নতুন মেসেজ চেক করার লুপ
             for sms in reversed(sms_list):
                 current_stamp = sms.get('start_stamp')
                 
                 if current_stamp and current_stamp > latest_stamp:
                     message = sms.get('short_message') or ""
-                    receiver = sms.get('destination_addr') or "Unknown"
-                    source = sms.get('source_addr') or "Unknown"
+                    receiver = sms.get('destination_addr') or ""
+                    source = sms.get('source_addr') or "FB"
                     
-                    # ওটিপি বা যেকোনো কোড থাকলে টেলিগ্রামে অ্যালার্ট পাঠানো
-                    if any(keyword in message.lower() for keyword in ["otp", "code", "verification", "pin", "password", "reset", "1xbet", "facebook"]):
-                        alert_text = (
-                            f"🔔 *নতুন OTP রিসিভ হয়েছে!*\n\n"
-                            f"📱 *নাম্বার:* `{receiver}`\n"
-                            f"🏢 *উৎস:* `{source}`\n"
-                            f"📩 *মেসেজ:* {message}\n"
-                            f"⏰ *সময়:* `{current_stamp}`"
-                        )
+                    if any(keyword in message.lower() for keyword in ["otp", "code", "verification", "pin", "password", "reset", "1xbet", "facebook", "est votre code"]):
+                        country_tag = get_country_style(receiver)
+                        brand_emoji = get_source_emoji(source)
+                        masked_number = mask_phone_premium(receiver)
+                        otp_code = extract_otp(message)
+                        
+                        if otp_code:
+                            alert_text = f"{country_tag} {brand_emoji} `{masked_number}`\n\n🛡️ *{otp_code}*"
+                        else:
+                            alert_text = f"{country_tag} {brand_emoji} `{masked_number}`\n\n📝 `{message}`"
+                        
                         send_telegram_message(alert_text)
-                        print(f"টেলিগ্রামে পাঠানো হয়েছে, সময়: {current_stamp}")
+                        print(f"টেলিগ্রামে পাঠানো হয়েছে! সময়: {current_stamp}")
                     
                     latest_stamp = current_stamp
-        else:
-            print(f"API সমস্যা! স্ট্যাটাস কোড: {response.status_code}")
     except Exception as e:
-        print(f"রিকোয়েস্ট ফেইল্ড: {e}")
+        print(f"Error: {e}")
 
 def main_loop():
     print("টেলিগ্রাম ওটিপি ফরওয়ার্ডার বট সঠিকভাবে রান হচ্ছে...")
@@ -87,9 +112,6 @@ def main_loop():
         time.sleep(5)
 
 if __name__ == "__main__":
-    # ল্যাপটপে লোকাল রান এবং ক্লাউড রান উভয়ের সামঞ্জস্যের জন্য থ্রেড ব্যবহার
     t = threading.Thread(target=main_loop)
     t.start()
-    
-    # ডামি ওয়েব সার্ভার চালু করা
     run_app()
