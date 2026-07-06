@@ -4,12 +4,11 @@ import re
 import threading
 from flask import Flask
 
-# ==================== Render এর জন্য ডামি ওয়েব সার্ভার ====================
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is running 24/7!"
+    return "Bot is running 24/7 with Model 1!"
 
 def run_app():
     try:
@@ -29,24 +28,24 @@ API_URL = "https://iprns.stats.direct/rest/sms"
 latest_stamp = None  
 
 def get_country_style(phone):
-    if phone.startswith("236"):
-        return "🇨🇫 #CF"
+    # মডেল ১ এর জন্য দেশের পুরো নাম ও ফ্ল্যাগ
+    if phone.startswith("241"):
+        return "🇬🇦 **Gabon** (#GA)"
+    elif phone.startswith("236"):
+        return "🇨🇫 **Central African Republic** (#CF)"
     elif phone.startswith("961"):
-        return "🇱🇧 #LB"
-    return "🌐 #INT"
+        return "🇱🇧 **Lebanon** (#LB)"
+    return "🌐 **International** (#INT)"
 
-def get_source_emoji(source):
+def get_source_name(source):
     src_upper = source.upper()
-    if "FACEBOOK" in src_upper or "FB" in src_upper:
-        return "🔷"
+    if "WHATSAPP" in src_upper or "WA" in src_upper:
+        return "WhatsApp"
+    elif "FACEBOOK" in src_upper or "FB" in src_upper:
+        return "Facebook"
     elif "1XBET" in src_upper:
-        return "🟥"
-    return "✉️"
-
-def mask_phone_premium(phone):
-    if len(phone) >= 8:
-        return f"{phone[:5]} 💠 {phone[-4:]}"
-    return phone
+        return "1XBet"
+    return source
 
 def extract_otp(message):
     match = re.search(r'\b\d{4,8}\b', message)
@@ -85,18 +84,28 @@ def fetch_new_sms():
                 if current_stamp and current_stamp > latest_stamp:
                     message = sms.get('short_message') or ""
                     receiver = sms.get('destination_addr') or ""
-                    source = sms.get('source_addr') or "FB"
+                    source = sms.get('source_addr') or "Unknown"
                     
-                    if any(keyword in message.lower() for keyword in ["otp", "code", "verification", "pin", "password", "reset", "1xbet", "facebook", "est votre code"]):
-                        country_tag = get_country_style(receiver)
-                        brand_emoji = get_source_emoji(source)
-                        masked_number = mask_phone_premium(receiver)
+                    if any(keyword in message.lower() for keyword in ["otp", "code", "verification", "pin", "password", "whatsapp", "facebook", "1xbet"]):
+                        country_info = get_country_style(receiver)
+                        source_name = get_source_name(source)
                         otp_code = extract_otp(message)
                         
+                        # মডেল ১ এর ক্লিন ফরম্যাট
                         if otp_code:
-                            alert_text = f"{country_tag} {brand_emoji} `{masked_number}`\n\n🛡️ *{otp_code}*"
+                            alert_text = (
+                                f"{country_info}\n"
+                                f"📱 **Phone:** `+{receiver}`\n"
+                                f"🏢 **Source:** {source_name}\n"
+                                f"🛡️ **OTP Code:** **{otp_code}**"
+                            )
                         else:
-                            alert_text = f"{country_tag} {brand_emoji} `{masked_number}`\n\n📝 `{message}`"
+                            alert_text = (
+                                f"{country_info}\n"
+                                f"📱 **Phone:** `+{receiver}`\n"
+                                f"🏢 **Source:** {source_name}\n"
+                                f"📝 **Message:** `{message}`"
+                            )
                         
                         send_telegram_message(alert_text)
                         print(f"টেলিগ্রামে পাঠানো হয়েছে! সময়: {current_stamp}")
@@ -106,7 +115,7 @@ def fetch_new_sms():
         print(f"Error: {e}")
 
 def main_loop():
-    print("টেলিগ্রাম ওটিপি ফরওয়ার্ডার বট সঠিকভাবে রান হচ্ছে...")
+    print("বট মডেল ১ অনুযায়ী সফলভাবে রান হচ্ছে...")
     while True:
         fetch_new_sms()
         time.sleep(5)
