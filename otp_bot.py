@@ -3,12 +3,13 @@ import time
 import re
 import threading
 from flask import Flask
+from phone_iso3166.country import phone_country
 
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is running 24/7 with Model 1!"
+    return "Bot is running 24/7 with Live Country Detector!"
 
 def run_app():
     try:
@@ -16,36 +17,40 @@ def run_app():
     except Exception:
         pass
 
-# ==================== আপনার আসল কনফিগারেশন ====================
+# ==================== আপনার কনফিগারেশন ====================
 TELEGRAM_BOT_TOKEN = "8884098961:AAE1UxFAH60LQaUdnB6q3MKN2VHJ8mw84Q0"
 TELEGRAM_CHAT_ID = "-1004358010030"
 
 API_USERNAME = "RamAli25"
 API_PASSWORD = "md7247600@gmail.com"
-# =============================================================
+# ==========================================================
 
 API_URL = "https://iprns.stats.direct/rest/sms"
 latest_stamp = None  
 
-def get_country_style(phone):
-    # মডেল ১ এর জন্য দেশের পুরো নাম ও ফ্ল্যাগ
-    if phone.startswith("241"):
-        return "🇬🇦 **Gabon** (#GA)"
-    elif phone.startswith("236"):
-        return "🇨🇫 **Central African Republic** (#CF)"
-    elif phone.startswith("961"):
-        return "🇱🇧 **Lebanon** (#LB)"
-    return "🌐 **International** (#INT)"
+# অটোমেটিক দেশের ফ্ল্যাগ জেনারেট করার ফাংশন
+def get_flag(country_code):
+    if not country_code or len(country_code) != 2:
+        return "🌍"
+    return chr(127397 + ord(country_code[0].upper())) + chr(127397 + ord(country_code[1].upper()))
 
-def get_source_name(source):
-    src_upper = source.upper()
-    if "WHATSAPP" in src_upper or "WA" in src_upper:
-        return "WhatsApp"
-    elif "FACEBOOK" in src_upper or "FB" in src_upper:
-        return "Facebook"
-    elif "1XBET" in src_upper:
-        return "1XBet"
-    return source
+# নাম্বার থেকে দেশের নাম ও ফ্ল্যাগ লাইভ বের করার ফাংশন
+def get_live_country(phone):
+    try:
+        # ফোন নাম্বার থেকে ISO ২ অক্ষরের কোড বের করবে (যেমন: 'AZ', 'GA', 'BD')
+        iso_code = phone_country(f"+{phone}")
+        
+        # ISO কোড থেকে পুরো দেশের নাম জানার এপিআই (টেলিগ্রামেরই ইন্টারনাল এপিআই ব্যবহার করে)
+        res = requests.get(f"https://restcountries.com/v3.1/alpha/{iso_code}", timeout=5)
+        if res.status_code == 200:
+            country_data = res.json()
+            country_name = country_data[0]['name']['common']
+            flag = country_data[0].get('flag', get_flag(iso_code))
+            return country_name, flag
+        else:
+            return iso_code, "🌍"
+    except Exception:
+        return "Unknown Country", "🌍"
 
 def extract_otp(message):
     match = re.search(r'\b\d{4,8}\b', message)
@@ -75,7 +80,6 @@ def fetch_new_sms():
 
             if latest_stamp is None:
                 latest_stamp = sms_list[0].get('start_stamp')
-                print(f"বট চালু হয়েছে। সর্বশেষ SMS সময়: {latest_stamp}")
                 return
 
             for sms in reversed(sms_list):
@@ -86,36 +90,33 @@ def fetch_new_sms():
                     receiver = sms.get('destination_addr') or ""
                     source = sms.get('source_addr') or "Unknown"
                     
-                    if any(keyword in message.lower() for keyword in ["otp", "code", "verification", "pin", "password", "whatsapp", "facebook", "1xbet"]):
-                        country_info = get_country_style(receiver)
-                        source_name = get_source_name(source)
+                    if any(keyword in message.lower() for keyword in ["otp", "code", "verification", "pin", "password", "telegram", "facebook", "whatsapp"]):
                         otp_code = extract_otp(message)
                         
-                        # মডেল ১ এর ক্লিন ফরম্যাট
-                        if otp_code:
-                            alert_text = (
-                                f"{country_info}\n"
-                                f"📱 **Phone:** `+{receiver}`\n"
-                                f"🏢 **Source:** {source_name}\n"
-                                f"🛡️ **OTP Code:** **{otp_code}**"
-                            )
-                        else:
-                            alert_text = (
-                                f"{country_info}\n"
-                                f"📱 **Phone:** `+{receiver}`\n"
-                                f"🏢 **Source:** {source_name}\n"
-                                f"📝 **Message:** `{message}`"
-                            )
+                        # লাইভ কান্ট্রি ও ফ্ল্যাগ ডিটেকশন
+                        country_name, country_flag = get_live_country(receiver)
+                        service_name = source.upper() if "Unknown" not in source else "Service"
+                        
+                        # আপনার ফাইনাল প্রিমিয়াম ফায়ার মডেল
+                        alert_text = (
+                            f"{country_flag} **{country_name} {service_name} OTP Detected**\n\n"
+                            f"📞 **Number:** `+{receiver}`\n"
+                            f"🔑 **OTP:** **{otp_code}**\n"
+                            f"🛠 **Service:** {service_name}\n"
+                            f"🌍 **Country:** {country_name} {country_flag}\n"
+                            f"⏰ **Time:** {current_stamp}\n\n"
+                            f"✉️ **Message:**\n"
+                            f"`{message}`"
+                        )
                         
                         send_telegram_message(alert_text)
-                        print(f"টেলিগ্রামে পাঠানো হয়েছে! সময়: {current_stamp}")
+                        print(f"লাইভ কান্ট্রি মডেলে ওটিপি পাঠানো হয়েছে!")
                     
                     latest_stamp = current_stamp
     except Exception as e:
         print(f"Error: {e}")
 
 def main_loop():
-    print("বট মডেল ১ অনুযায়ী সফলভাবে রান হচ্ছে...")
     while True:
         fetch_new_sms()
         time.sleep(5)
