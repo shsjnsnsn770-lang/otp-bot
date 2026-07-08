@@ -3,13 +3,12 @@ import time
 import re
 import threading
 from flask import Flask
-from phone_iso3166.country import phone_country
 
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is running 24/7 with Masked Number & Live Country!"
+    return "Bot is running 24/7 with 40+ Global Country Autodetect!"
 
 def run_app():
     try:
@@ -41,26 +40,76 @@ def mask_phone_number(phone):
     masked = "*" * (len(phone_str) - 7) # মাঝখানের সংখ্যা অনুযায়ী স্টার (*) বসবে
     return f"+{start}{masked}{end}"
 
-# অটোমেটিক দেশের ফ্ল্যাগ জেনারেট করার ফাংশন
-def get_flag(country_code):
-    if not country_code or len(country_code) != 2:
-        return "🌍"
-    return chr(127397 + ord(country_code[0].upper())) + chr(127397 + ord(country_code[1].upper()))
-
-# নাম্বার থেকে দেশের নাম ও ফ্ল্যাগ লাইভ বের করার ফাংশন
-def get_live_country(phone):
-    try:
-        iso_code = phone_country(f"+{phone}")
-        res = requests.get(f"https://restcountries.com/v3.1/alpha/{iso_code}", timeout=5)
-        if res.status_code == 200:
-            country_data = res.json()
-            country_name = country_data[0]['name']['common']
-            flag = country_data[0].get('flag', get_flag(iso_code))
-            return country_name, flag
-        else:
-            return iso_code, "🌍"
-    except Exception:
-        return "Unknown Country", "🌍"
+# থার্ডপার্টি লাইব্রেরি ছাড়া গ্লোবাল কান্ট্রি কোড অটোমেটিক ডিটেকশন (৪০+ দেশ যুক্ত করা হয়েছে)
+def get_global_country(phone):
+    phone_str = str(phone)
+    
+    country_map = {
+        # আপনার আগের মূল দেশগুলো
+        "236": ("Central African Republic", "🇨🇫"),
+        "241": ("Gabon", "🇬🇦"),
+        "994": ("Azerbaijan", "🇦🇿"),
+        "213": ("Algeria", "🇩🇿"),
+        "961": ("Lebanon", "🇱🇧"),
+        "880": ("Bangladesh", "🇧🇩"),
+        "91": ("India", "🇮🇳"),
+        "92": ("Pakistan", "🇵🇰"),
+        "7": ("Russia/Kazakhstan", "🇷🇺"),
+        "33": ("France", "🇫🇷"),
+        "49": ("Germany", "🇩🇪"),
+        "966": ("Saudi Arabia", "🇸🇦"),
+        "971": ("UAE", "🇦🇪"),
+        "60": ("Malaysia", "🇲🇾"),
+        "65": ("Singapore", "🇸🇬"),
+        "44": ("United Kingdom", "🇬🇧"),
+        "1": ("USA/Canada", "🇺🇸"),
+        
+        # নতুন ৩০টি প্লাস দেশ (আপনার রিকোয়েস্ট অনুযায়ী)
+        "974": ("Qatar", "🇶🇦"),
+        "965": ("Kuwait", "🇰🇼"),
+        "968": ("Oman", "🇴🇲"),
+        "973": ("Bahrain", "🇧🇭"),
+        "962": ("Jordan", "🇯🇴"),
+        "20": ("Egypt", "🇪🇬"),
+        "90": ("Turkey", "🇹🇷"),
+        "27": ("South Africa", "🇿🇦"),
+        "234": ("Nigeria", "🇳🇬"),
+        "254": ("Kenya", "🇰🇪"),
+        "212": ("Morocco", "🇲🇦"),
+        " Tunis": ("Tunisia", "🇹🇳"),
+        "216": ("Tunisia", "🇹🇳"),
+        "964": ("Iraq", "🇮🇶"),
+        "39": ("Italy", "🇮🇹"),
+        "34": ("Spain", "🇪🇸"),
+        "41": ("Switzerland", "🇨🇭"),
+        "31": ("Netherlands", "🇳🇱"),
+        "32": ("Belgium", "🇧🇪"),
+        "46": ("Sweden", "🇸🇪"),
+        "47": ("Norway", "🇳🇴"),
+        "61": ("Australia", "🇦🇺"),
+        "64": ("New Zealand", "🇳🇿"),
+        "81": ("Japan", "🇯🇵"),
+        "82": ("South Korea", "🇰🇷"),
+        "86": ("China", "🇨🇳"),
+        "62": ("Indonesia", "🇮🇩"),
+        "66": ("Thailand", "🇹🇭"),
+        "63": ("Philippines", "🇵🇭"),
+        "84": ("Vietnam", "🇻🇳"),
+        "94": ("Sri Lanka", "🇱🇰"),
+        "977": ("Nepal", "🇳🇵"),
+        "960": ("Maldives", "🇲🇻"),
+        "55": ("Brazil", "🇧🇷"),
+        "52": ("Mexico", "🇲🇽"),
+        "54": ("Argentina", "🇦🇷")
+    }
+    
+    # ৩ অক্ষরের কোড আগে চেক করবে, তারপর ২ অক্ষর, তারপর ১ অক্ষর
+    for length in [3, 2, 1]:
+        prefix = phone_str[:length]
+        if prefix in country_map:
+            return country_map[prefix]
+            
+    return "International", "🌍"
 
 def extract_otp(message):
     match = re.search(r'\b\d{4,8}\b', message)
@@ -103,12 +152,12 @@ def fetch_new_sms():
                     if any(keyword in message.lower() for keyword in ["otp", "code", "verification", "pin", "password"]):
                         otp_code = extract_otp(message)
                         
-                        # লাইভ দেশের নাম, ফ্ল্যাগ এবং নাম্বার মাস্কিং
-                        country_name, country_flag = get_live_country(receiver)
+                        # গ্লোবাল অটো কান্ট্রি নেম ও নাম্বার মাস্কিং
+                        country_name, country_flag = get_global_country(receiver)
                         masked_number = mask_phone_number(receiver)
                         service_name = source.upper() if "Unknown" not in source else "Service"
                         
-                        # আপনার ফাইনাল প্রিমিয়াম ফায়ার ফরম্যাট (মাঝখানে স্টার চিহ্ন সহ)
+                        # আপনার ফাইনাল প্রিমিয়াম ফায়ার ফরম্যাট
                         alert_text = (
                             f"💥 {country_name} {service_name} OTP Detected\n\n"
                             f"📞 **Number:** `{masked_number}`\n"
@@ -121,7 +170,7 @@ def fetch_new_sms():
                         )
                         
                         send_telegram_message(alert_text)
-                        print(f"মাস্কড নাম্বার মডেলে মেসেজ পাঠানো হয়েছে!")
+                        print(f"গ্লোবাল অটো কান্ট্রি মডেলে মেসেজ পাঠানো হয়েছে!")
                     
                     latest_stamp = current_stamp
     except Exception as e:
