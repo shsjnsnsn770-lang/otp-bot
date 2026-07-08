@@ -9,7 +9,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is running 24/7 with Live Country Detector!"
+    return "Bot is running 24/7 with Masked Number & Live Country!"
 
 def run_app():
     try:
@@ -28,6 +28,19 @@ API_PASSWORD = "md7247600@gmail.com"
 API_URL = "https://iprns.stats.direct/rest/sms"
 latest_stamp = None  
 
+# নাম্বারের মাঝখানের অংশ হাইড করার ফাংশন
+def mask_phone_number(phone):
+    if not phone:
+        return ""
+    phone_str = str(phone)
+    if len(phone_str) <= 7:
+        return f"+{phone_str}"
+    
+    start = phone_str[:4]      # শুরুর ৪টি সংখ্যা
+    end = phone_str[-3:]       # শেষের ৩টি সংখ্যা
+    masked = "*" * (len(phone_str) - 7) # মাঝখানের সংখ্যা অনুযায়ী স্টার (*) বসবে
+    return f"+{start}{masked}{end}"
+
 # অটোমেটিক দেশের ফ্ল্যাগ জেনারেট করার ফাংশন
 def get_flag(country_code):
     if not country_code or len(country_code) != 2:
@@ -37,10 +50,7 @@ def get_flag(country_code):
 # নাম্বার থেকে দেশের নাম ও ফ্ল্যাগ লাইভ বের করার ফাংশন
 def get_live_country(phone):
     try:
-        # ফোন নাম্বার থেকে ISO ২ অক্ষরের কোড বের করবে (যেমন: 'AZ', 'GA', 'BD')
         iso_code = phone_country(f"+{phone}")
-        
-        # ISO কোড থেকে পুরো দেশের নাম জানার এপিআই (টেলিগ্রামেরই ইন্টারনাল এপিআই ব্যবহার করে)
         res = requests.get(f"https://restcountries.com/v3.1/alpha/{iso_code}", timeout=5)
         if res.status_code == 200:
             country_data = res.json()
@@ -90,18 +100,19 @@ def fetch_new_sms():
                     receiver = sms.get('destination_addr') or ""
                     source = sms.get('source_addr') or "Unknown"
                     
-                    if any(keyword in message.lower() for keyword in ["otp", "code", "verification", "pin", "password", "telegram", "facebook", "whatsapp"]):
+                    if any(keyword in message.lower() for keyword in ["otp", "code", "verification", "pin", "password"]):
                         otp_code = extract_otp(message)
                         
-                        # লাইভ কান্ট্রি ও ফ্ল্যাগ ডিটেকশন
+                        # লাইভ দেশের নাম, ফ্ল্যাগ এবং নাম্বার মাস্কিং
                         country_name, country_flag = get_live_country(receiver)
+                        masked_number = mask_phone_number(receiver)
                         service_name = source.upper() if "Unknown" not in source else "Service"
                         
-                        # আপনার ফাইনাল প্রিমিয়াম ফায়ার মডেল
+                        # আপনার ফাইনাল প্রিমিয়াম ফায়ার ফরম্যাট (মাঝখানে স্টার চিহ্ন সহ)
                         alert_text = (
-                            f"{country_flag} **{country_name} {service_name} OTP Detected**\n\n"
-                            f"📞 **Number:** `+{receiver}`\n"
-                            f"🔑 **OTP:** **{otp_code}**\n"
+                            f"💥 {country_name} {service_name} OTP Detected\n\n"
+                            f"📞 **Number:** `{masked_number}`\n"
+                            f"🔑 **OTP:** `{otp_code}`\n"
                             f"🛠 **Service:** {service_name}\n"
                             f"🌍 **Country:** {country_name} {country_flag}\n"
                             f"⏰ **Time:** {current_stamp}\n\n"
@@ -110,7 +121,7 @@ def fetch_new_sms():
                         )
                         
                         send_telegram_message(alert_text)
-                        print(f"লাইভ কান্ট্রি মডেলে ওটিপি পাঠানো হয়েছে!")
+                        print(f"মাস্কড নাম্বার মডেলে মেসেজ পাঠানো হয়েছে!")
                     
                     latest_stamp = current_stamp
     except Exception as e:
